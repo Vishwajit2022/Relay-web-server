@@ -15,7 +15,7 @@ TimerHandle_t timerHandle;
 
 int enteredHours = 0;          // For user input
 int enteredMinutes = 0;        // For user input
-int mode = 0;                  // 0 = Loop, 1 = OneTime
+bool mode = 0;                  // 0 = Loop, 1 = OneTime
 bool reset = false;            // Reset state
 bool settingsChanged = false;  // Flag for settings change
 
@@ -50,6 +50,7 @@ void loadSettings() {
     }
   }
 }
+
 void loadCounter() {
   if (LittleFS.exists("/counter.json")) {
     File file = LittleFS.open("/counter.json", "r");
@@ -80,6 +81,13 @@ void loadReset() {
 void realTimerCounterUpdate() {
   realHours = enteredHours;
   realMinutes = enteredMinutes;
+  deleteTimer();
+  if(realHours>0 || realMinutes >0){
+   Serial.println("Timer start in realhours and realminutes");
+  if (loadTimerConfig(mode, realHours, realMinutes)) {
+    xTimerStart(timerHandle, 0);  // Start the timer with no delay
+  }
+  }
   void saveCounter();
 }
 
@@ -295,13 +303,14 @@ bool loadTimerConfig(bool mode1, int hours, int minute) {
   Serial.print("time in minute: ");
   Serial.println(timeMs);
   Serial.print("Loop mode: ");
-  Serial.println(loopMode ? "Enabled" : "Single Execution");
+  Serial.print(mode1);
+  Serial.println(loopMode ? "Single Execution" : "Enabled");
 
   // Create the FreeRTOS timer based on loop mode
   timerHandle = xTimerCreate(
     "MyTimer",                    // Timer name
     pdMS_TO_TICKS(timeMs),        // Timer period in ticks (1000 ms)
-    loopMode ? pdTRUE : pdFALSE,  // Auto-reload based on loopMode
+    loopMode ? pdFALSE : pdTRUE,  // Auto-reload based on loopMode
     (void *)0,                    // Timer ID (not used here)
     onTimer                       // Callback function
   );
@@ -314,7 +323,12 @@ bool loadTimerConfig(bool mode1, int hours, int minute) {
   return true;
 }
 
-
+void deleteTimer() {
+    if (timerHandle != NULL) {
+        xTimerDelete(timerHandle, 0); // Delete the timer
+        timerHandle = NULL;           // Clear the handle
+    }
+}
 
 
 
@@ -339,14 +353,17 @@ void setup() {
   server.on("/restart", handleRestart);
   server.begin();
   Serial.println("HTTP server started");
-
-  if (loadTimerConfig(false, 0, 1)) {
+  deleteTimer();
+  if(realHours>0 || realMinutes >0){
+   Serial.println("Timer start in realhours and realminutes");
+  if (loadTimerConfig(mode, realHours, realMinutes)) {
     xTimerStart(timerHandle, 0);  // Start the timer with no delay
+  }
   }
   pinMode(buzzerPin, OUTPUT);
   pinMode(relayPin, OUTPUT);
   digitalWrite(relayPin, HIGH);
-
+  delay(1000);
 }
 
 
@@ -355,18 +372,22 @@ void loop() {
   server.handleClient();
   updateRealCounter();  // Update the real-time counter
   if (timerFlag) {
-    if (mode) {
+    if (!mode) {
       if (ledFlag) {
         digitalWrite(relayPin, LOW);
         ledFlag = false;
+        Serial.println("LEDflag relay off");
       } else {
         digitalWrite(relayPin, HIGH);
         ledFlag = true;
+        Serial.println("LEDflag relay On");
       }
     }
     else {
       digitalWrite(relayPin, LOW);
+      Serial.println("LEDwithout flag relay OFF");
     }
     timerFlag=false;
   }
+  delay(10);
 }
